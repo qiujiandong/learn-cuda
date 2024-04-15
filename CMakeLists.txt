@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 
-set(CMAKE_CUDA_ARCHITECTURES 70 72 75 80 86 89)
+# 根据需要添加架构的配置
+set(CMAKE_CUDA_ARCHITECTURES 75 86)
 project(learn-cuda LANGUAGES CXX CUDA)
 
 find_package(Eigen3 REQUIRED)
@@ -10,6 +11,8 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream per-thread")
 
 # 显示详细的 ptx 信息
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ptxas-options=-v")
+
+include_directories(${CMAKE_SOURCE_DIR})
 
 add_subdirectory(0-baseline)
 

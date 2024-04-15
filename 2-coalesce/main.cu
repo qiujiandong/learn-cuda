@@ -1,5 +1,5 @@
 /**
- * @file other_practice.cu
+ * @file main.cu
  * @author qiujiandong <1335521934@qq.com>
  * @date 2024-04-15
  * @brief
@@ -46,76 +46,67 @@ int main() {
   std::chrono::duration<double> duration = end - start;
   std::cout << "Cuda matrix multiplication time: " << duration.count() << " seconds" << std::endl;
 
-  // 准备用graph实现
-  Eigen::MatrixXd result_graph = Eigen::MatrixXd::Zero(N, N);
+  Eigen::MatrixXd result_shmem = Eigen::MatrixXd::Zero(N, N);
   cudaStream_t s;
   cudaStreamCreate(&s);
   cudaHostRegister(mat1.data(), N * N * sizeof(double), cudaHostRegisterDefault);
   cudaHostRegister(mat2.data(), N * N * sizeof(double), cudaHostRegisterDefault);
-  cudaHostRegister(result_graph.data(), N * N * sizeof(double), cudaHostRegisterDefault);
+  cudaHostRegister(result_shmem.data(), N * N * sizeof(double), cudaHostRegisterDefault);
 
-  // 创建graph和exec
-  cudaGraph_t graph;
-  cudaGraphCreate(&graph, 0);
-  cudaGraphExec_t exec;
-
-  // 创建capture graph
-  cudaStreamBeginCapture(s, cudaStreamCaptureModeRelaxed);
+  // 异步搬运数据，用共享内存实现矩阵乘法
+  start = std::chrono::high_resolution_clock::now();
   cudaMemcpyAsync(d_mat1, mat1.data(), N * N * sizeof(double), cudaMemcpyHostToDevice, s);
   cudaMemcpyAsync(d_mat2, mat2.data(), N * N * sizeof(double), cudaMemcpyHostToDevice, s);
   coalesce<<<gridSize, blockSize, 0, s>>>(d_mat1, d_mat2, d_result);
-  cudaMemcpyAsync(result_graph.data(), d_result, N * N * sizeof(double), cudaMemcpyDeviceToHost, s);
-  cudaStreamEndCapture(s, &graph);
-
-  // graph实例化
-  cudaGraphInstantiate(&exec, graph, NULL, NULL, 0);
-
-  // 运行graph
-  start = std::chrono::high_resolution_clock::now();
-  cudaGraphLaunch(exec, s);
+  cudaMemcpyAsync(result_shmem.data(), d_result, N * N * sizeof(double), cudaMemcpyDeviceToHost, s);
   cudaDeviceSynchronize();
   end = std::chrono::high_resolution_clock::now();
 
   // 检查结果
-  if (!result_graph.isApprox(result_cuda, 1e-6)) {
+  if (!result_shmem.isApprox(result_cuda, 1e-6)) {
     std::cout << "Result mismatch" << std::endl;
     return -1;
   }
 
   // 统计用时
   duration = end - start;
-  std::cout << "Cuda graph matrix multiplication time: " << duration.count() << " seconds" << std::endl;
+  std::cout << "Shared memory + coalesce matrix multiplication time: " << duration.count() << " seconds" << std::endl;
 
-  // 准备用memory map的方式实现
-  cudaDeviceProp prop;
-  cudaGetDeviceProperties(&prop, 0);
-  if (prop.canMapHostMemory != 1) {
-    std::cout << "Device cannot map host memory" << std::endl;
-    return -1;
-  }
-  cudaSetDeviceFlags(cudaDeviceMapHost);
+  // 准备用cublas实现矩阵乘法
+  Eigen::MatrixXd result_cublas = Eigen::MatrixXd::Zero(N, N);
+  cudaHostRegister(result_cublas.data(), N * N * sizeof(double), cudaHostRegisterDefault);
+  cublasHandle_t cublas_handle;
+  cublasCreate(&cublas_handle);
+  cublasSetStream(cublas_handle, s);
+  double alpha = 1.0;
+  double beta = 0.0;
 
-  // 分配结果存放的空间，获取map后的device端地址
-  Eigen::MatrixXd reuslt_mapped = Eigen::MatrixXd::Zero(N, N);
-  double *d_mat1_mapped, *d_mat2_mapped, *d_result_mapped;
-  cudaHostRegister(reuslt_mapped.data(), N * N * sizeof(double), cudaHostRegisterDefault);
-  cudaHostGetDevicePointer(&d_mat1_mapped, mat1.data(), 0);
-  cudaHostGetDevicePointer(&d_mat2_mapped, mat2.data(), 0);
-  cudaHostGetDevicePointer(&d_result_mapped, reuslt_mapped.data(), 0);
-
-  // 进行矩阵乘法
+  // 调用cublas进行运算
   start = std::chrono::high_resolution_clock::now();
-  coalesce<<<gridSize, blockSize>>>(d_mat1_mapped, d_mat2_mapped, d_result_mapped);
+  cudaMemcpyAsync(d_mat1, mat1.data(), N * N * sizeof(double), cudaMemcpyHostToDevice, s);
+  cudaMemcpyAsync(d_mat2, mat2.data(), N * N * sizeof(double), cudaMemcpyHostToDevice, s);
+  cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &alpha, d_mat1, N, d_mat2, N, &beta, d_result, N);
+  cudaMemcpyAsync(result_cublas.data(), d_result, N * N * sizeof(double), cudaMemcpyDeviceToHost, s);
   cudaDeviceSynchronize();
   end = std::chrono::high_resolution_clock::now();
 
   // 检查结果
-  if (!reuslt_mapped.isApprox(result_cuda, 1e-6)) {
+  if (!result_cublas.isApprox(result_cuda, 1e-6)) {
     std::cout << "Result mismatch" << std::endl;
     return -1;
   }
 
   // 统计用时
   duration = end - start;
-  std::cout << "Cuda mapped matrix multiplication time: " << duration.count() << " seconds" << std::endl;
+  std::cout << "Cublas matrix multiplication time: " << duration.count() << " seconds" << std::endl;
+
+  cublasDestroy(cublas_handle);
+  cudaStreamDestroy(s);
+
+  // 释放在设备上分配的空间
+  cudaFree(d_mat1);
+  cudaFree(d_mat2);
+  cudaFree(d_result);
+
+  return 0;
 }

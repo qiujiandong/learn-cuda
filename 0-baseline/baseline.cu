@@ -14,9 +14,7 @@
 #include <iostream>
 
 #include "basic.h"
-
-constexpr int N = 4096;
-constexpr int BLOCK_SIZE = 16;
+#include "common.h"
 
 int main() {
   // 创建两个NxN的随机矩阵，用于进行矩阵乘法

@@ -14,6 +14,7 @@ __global__ void basic(int N, double *a, double *b, double *c) {
   int col = blockIdx.x * blockDim.x + threadIdx.x;
   double sum = 0.0;
   for (int i = 0; i < N; i++) {
+    // 注意数据是按照列优先存储的
     sum += a[row + i * N] * b[col * N + i];
   }
   c[col * N + row] = sum;
