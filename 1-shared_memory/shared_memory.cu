@@ -24,12 +24,12 @@ __global__ void shared_memory(double *a, double *b, double *c) {
 
   int a_col_global, b_row_global;
 
+  // 每个block一起load数据，放入s_a s_b中
+  __shared__ double s_a[BLOCK_SIZE][BLOCK_SIZE];
+  __shared__ double s_b[BLOCK_SIZE][BLOCK_SIZE];
+
   // 每个thread需要load N/BLOCK_SIZE次数据
   for (int i = 0; i < N / BLOCK_SIZE; ++i) {
-    // 每个block一起load数据，放入s_a s_b中
-    __shared__ double s_a[BLOCK_SIZE][BLOCK_SIZE];
-    __shared__ double s_b[BLOCK_SIZE][BLOCK_SIZE];
-
     // 计算要搬运的数据在global下的索引
     a_col_global = i * BLOCK_SIZE + threadIdx.x;
     b_row_global = i * BLOCK_SIZE + threadIdx.y;

@@ -9,5 +9,5 @@
 
 #pragma once
 
-constexpr int N = 4096;
-constexpr int BLOCK_SIZE = 16;
+constexpr int N = 4096;        /*! 矩阵大小为NxN */
+constexpr int BLOCK_SIZE = 16; /*! thread block的大小 BLOCK_SIZExBLOCK_SIZE */
